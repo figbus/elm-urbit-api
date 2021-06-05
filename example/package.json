@@ -1,0 +1,13 @@
+{
+  "name": "owner",
+  "version": "0.0.0",
+  "scripts": {
+    "start": "vite --open",
+    "build": "vite build",
+    "serve": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^2.3.4",
+    "vite-plugin-elm": "^2.3.0"
+  }
+}
