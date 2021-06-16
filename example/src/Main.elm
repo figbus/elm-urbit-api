@@ -47,7 +47,7 @@ init : Int -> ( Model, Cmd Msg )
 init entropy =
     ( { entropy = entropy
       , configInput =
-            { url = "http://0.0.0.0:8080"
+            { url = "http://localhost:8080"
             , ourShip = "zod"
             , code = "lidlut-tabwed-pillex-ridrup"
             , resource = "~zod/airlock-test"
