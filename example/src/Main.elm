@@ -163,6 +163,7 @@ update msg model =
                 , resource = parseResource model.configInput.resource
                 , title = "Airlock Test"
                 , description = ""
+                , invites = []
                 , graphModule = "chat"
                 , mark = "graph-validator-chat"
                 }

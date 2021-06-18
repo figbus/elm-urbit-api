@@ -281,35 +281,39 @@ createUnmanagedGraph :
     , resource : Resource
     , title : String
     , description : String
+    , invites : List String
     , graphModule : String
     , mark : String
     }
     -> (Result Http.Error JD.Value -> msg)
     -> Cmd msg
-createUnmanagedGraph { url, resource, title, description, graphModule, mark } =
+createUnmanagedGraph options =
     Urbit.spider
-        { url = url
+        { url = options.url
         , inputMark = "graph-view-action"
         , outputMark = "json"
         , threadName = "graph-create"
         , body =
             encodeGraphCreate
-                { resource = resource
-                , title = title
-                , description = description
+                { resource = options.resource
+                , title = options.title
+                , description = options.description
                 , associated =
                     JE.object
                         [ ( "policy"
                           , JE.object
                                 [ ( "invite"
                                   , JE.object
-                                        [ ( "pending", JE.list identity [] ) ]
+                                        [ ( "pending"
+                                          , JE.list JE.string options.invites
+                                          )
+                                        ]
                                   )
                                 ]
                           )
                         ]
-                , graphModule = graphModule
-                , mark = mark
+                , graphModule = options.graphModule
+                , mark = options.mark
                 }
         }
 
