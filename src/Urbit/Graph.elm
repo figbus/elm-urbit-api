@@ -384,7 +384,10 @@ updateStore graphUpdate (Store store) =
                                     graph
                 in
                 Dict.update (resourceToKey resource)
-                    (Maybe.map (\graph -> List.foldl insertNode graph newNodes))
+                    (Maybe.withDefault Dict.empty
+                        >> (\graph -> List.foldl insertNode graph newNodes)
+                        >> Just
+                    )
                     store
 
             RemoveNodes resource indices ->
