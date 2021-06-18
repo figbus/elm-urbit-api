@@ -206,16 +206,15 @@ subscribeToGraphUpdates { ship, session } =
 {-| Add nodes to the graph store.
 -}
 addNodes :
-    { ship : String
-    , resource : Resource
+    { resource : Resource
     , nodes : List Node
     , session : Urbit.Session
     }
     -> (Result Http.Error () -> msg)
     -> ( Urbit.Session, Cmd msg )
-addNodes { ship, resource, nodes, session } =
+addNodes { resource, nodes, session } =
     Urbit.poke
-        { ship = ship
+        { ship = Urbit.ship session
         , app = "graph-push-hook"
         , mark = "graph-update-2"
         , json = encodeAddNodesGraphUpdate resource nodes

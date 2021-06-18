@@ -1,5 +1,5 @@
 module Urbit exposing
-    ( Session, Message, MessageData(..), url, uid, lastEventId
+    ( Session, Message, MessageData(..), url, ship, uid, lastEventId
     , connect, setupEventSource, messages, ack
     , login, scry, spider
     , poke, subscribe, unsubscribe, disconnect
@@ -11,7 +11,7 @@ module Urbit exposing
 
 # Data Types
 
-@docs Session, Message, MessageData, url, uid, lastEventId
+@docs Session, Message, MessageData, url, ship, uid, lastEventId
 
 
 # Connection Setup
@@ -59,6 +59,7 @@ import Time
 type Session
     = Session
         { url : String
+        , ship : String
         , uid : String
         , lastEventId : Int
         }
@@ -98,6 +99,13 @@ url (Session session) =
     session.url
 
 
+{-| Get a Session's ship.
+-}
+ship : Session -> String
+ship (Session session) =
+    session.ship
+
+
 {-| Get a Session's uid.
 -}
 uid : Session -> String
@@ -133,35 +141,31 @@ connect :
     -> (Result Http.Error Session -> msg)
     -> Cmd msg
 connect config tagger =
-    Cmd.batch
-        [ loginTask
-            { url = config.url
-            , channelId = config.channelId
-            , code = config.code
-            }
-            |> Task.andThen
-                (\() ->
-                    let
-                        session1 =
-                            Session
-                                { url = config.url
-                                , uid = config.channelId
-                                , lastEventId = 0
-                                }
-
-                        ( session2, task ) =
-                            pokeTask
-                                { ship = config.ship
-                                , app = "hood"
-                                , mark = "helm-hi"
-                                , json = JE.string "opening airlock"
-                                , session = session1
-                                }
-                    in
-                    task |> Task.map (always session2)
-                )
-            |> Task.attempt tagger
-        ]
+    loginTask
+        { url = config.url
+        , code = config.code
+        }
+        |> Task.andThen
+            (\() ->
+                let
+                    ( session, task ) =
+                        pokeTask
+                            { ship = config.ship
+                            , app = "hood"
+                            , mark = "helm-hi"
+                            , json = JE.string "opening airlock"
+                            , session =
+                                Session
+                                    { url = config.url
+                                    , ship = config.ship
+                                    , uid = config.channelId
+                                    , lastEventId = 0
+                                    }
+                            }
+                in
+                task |> Task.map (always session)
+            )
+        |> Task.attempt tagger
 
 
 {-| This will set up the realtime communication channel with urbit. Because Elm
@@ -379,16 +383,16 @@ pokeTask :
     , session : Session
     }
     -> ( Session, Task Http.Error () )
-pokeTask { ship, app, mark, json, session } =
+pokeTask config =
     sendAppTask
         { action = "poke"
-        , ship = ship
-        , app = app
+        , ship = config.ship
+        , app = config.app
         , pairs =
-            [ ( "mark", JE.string mark )
-            , ( "json", json )
+            [ ( "mark", JE.string config.mark )
+            , ( "json", config.json )
             ]
-        , session = session
+        , session = config.session
         }
 
 
@@ -402,13 +406,13 @@ subscribe :
     }
     -> (Result Http.Error () -> msg)
     -> ( Session, Cmd msg )
-subscribe { ship, app, path, session } tagger =
+subscribe config tagger =
     sendApp
         { action = "subscribe"
-        , ship = ship
-        , app = app
-        , pairs = [ ( "path", JE.string path ) ]
-        , session = session
+        , ship = config.ship
+        , app = config.app
+        , pairs = [ ( "path", JE.string config.path ) ]
+        , session = config.session
         }
         tagger
 
@@ -463,14 +467,14 @@ sendAppTask :
     , session : Session
     }
     -> ( Session, Task Http.Error () )
-sendAppTask { session, action, ship, app, pairs } =
+sendAppTask config =
     sendTask
-        { action = action
+        { action = config.action
         , pairs =
-            ( "ship", JE.string ship )
-                :: ( "app", JE.string app )
-                :: pairs
-        , session = session
+            ( "ship", JE.string config.ship )
+                :: ( "app", JE.string config.app )
+                :: config.pairs
+        , session = config.session
         }
 
 
