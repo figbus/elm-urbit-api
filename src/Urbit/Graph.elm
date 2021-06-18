@@ -440,7 +440,10 @@ updateDecoder =
                     resourceDecoder
                     (JD.field "nodes" <|
                         (JD.keyValuePairs nodeDecoder
-                            |> JD.map (List.map (Tuple.mapFirst parseIndex))
+                            |> JD.map
+                                (filterDeletedNodes
+                                    >> List.map (Tuple.mapFirst parseIndex)
+                                )
                         )
                     )
             , JD.field "remove-posts" <|
@@ -456,23 +459,40 @@ graphDecoder : JD.Decoder Graph
 graphDecoder =
     JD.field "graph"
         (JD.keyValuePairs nodeDecoder
-            |> JD.map Dict.fromList
+            |> JD.map (filterDeletedNodes >> Dict.fromList)
         )
 
 
-nodeDecoder : JD.Decoder Node
+nodeDecoder : JD.Decoder (Maybe Node)
 nodeDecoder =
-    JD.map2 Node
+    JD.map2
+        (\maybePost children ->
+            maybePost
+                |> Maybe.map (\post -> Node post children)
+        )
         (JD.field "post" <|
-            JD.map5 Post
-                (JD.field "index" JD.string |> JD.map parseIndex)
-                (JD.field "author" JD.string)
-                (JD.field "time-sent" JD.int |> JD.map Time.millisToPosix)
-                (JD.field "contents" <| JD.list JD.value)
-                (JD.field "hash" <| JD.maybe JD.string)
+            JD.oneOf
+                [ JD.map5 Post
+                    (JD.field "index" JD.string |> JD.map parseIndex)
+                    (JD.field "author" JD.string)
+                    (JD.field "time-sent" JD.int |> JD.map Time.millisToPosix)
+                    (JD.field "contents" <| JD.list JD.value)
+                    (JD.field "hash" <| JD.maybe JD.string)
+                    |> JD.map Just
+                , JD.string
+                    |> JD.map (\_ -> Nothing)
+                ]
         )
         (JD.field "children" (JD.maybe (JD.lazy (\_ -> graphDecoder)))
             |> JD.map (Maybe.withDefault Dict.empty)
+        )
+
+
+filterDeletedNodes : List ( String, Maybe Node ) -> List ( String, Node )
+filterDeletedNodes =
+    List.filterMap
+        (\( index, maybeNode ) ->
+            maybeNode |> Maybe.map (\node -> ( index, node ))
         )
 
 
