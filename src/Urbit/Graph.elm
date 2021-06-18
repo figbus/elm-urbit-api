@@ -349,7 +349,7 @@ deleteGraphSpider { url, resource } =
 type Update
     = AddGraph Resource Graph
     | AddNodes Resource (List ( Index, Node ))
-    | RemoveNodes Resource (List Index)
+    | RemovePosts Resource (List Index)
     | RemoveGraph Resource
 
 
@@ -390,7 +390,7 @@ updateStore graphUpdate (Store store) =
                     )
                     store
 
-            RemoveNodes resource indices ->
+            RemovePosts resource indices ->
                 Dict.update (resourceToKey resource)
                     (Maybe.map
                         (\graph ->
@@ -443,8 +443,8 @@ updateDecoder =
                             |> JD.map (List.map (Tuple.mapFirst parseIndex))
                         )
                     )
-            , JD.field "remove-nodes" <|
-                JD.map2 RemoveNodes
+            , JD.field "remove-posts" <|
+                JD.map2 RemovePosts
                     resourceDecoder
                     (JD.field "indices" <|
                         JD.list (JD.string |> JD.map parseIndex)
