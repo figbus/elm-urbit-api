@@ -287,17 +287,17 @@ createUnmanagedGraph :
     }
     -> (Result Http.Error JD.Value -> msg)
     -> Cmd msg
-createUnmanagedGraph options =
+createUnmanagedGraph config =
     Urbit.spider
-        { url = options.url
+        { url = config.url
         , inputMark = "graph-view-action"
         , outputMark = "json"
         , threadName = "graph-create"
         , body =
             encodeGraphCreate
-                { resource = options.resource
-                , title = options.title
-                , description = options.description
+                { resource = config.resource
+                , title = config.title
+                , description = config.description
                 , associated =
                     JE.object
                         [ ( "policy"
@@ -305,15 +305,15 @@ createUnmanagedGraph options =
                                 [ ( "invite"
                                   , JE.object
                                         [ ( "pending"
-                                          , JE.list JE.string options.invites
+                                          , JE.list JE.string config.invites
                                           )
                                         ]
                                   )
                                 ]
                           )
                         ]
-                , graphModule = options.graphModule
-                , mark = options.mark
+                , graphModule = config.graphModule
+                , mark = config.mark
                 }
         }
 
