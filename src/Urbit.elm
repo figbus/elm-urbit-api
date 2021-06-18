@@ -265,7 +265,6 @@ authenticate.
 login :
     { url : String
     , code : String
-    , channelId : String
     }
     -> (Result Http.Error () -> msg)
     -> Cmd msg
@@ -277,7 +276,6 @@ login config tagger =
 loginTask :
     { url : String
     , code : String
-    , channelId : String
     }
     -> Task Http.Error ()
 loginTask config =
