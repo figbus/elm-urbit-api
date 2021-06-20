@@ -1,6 +1,6 @@
 module Urbit exposing
     ( Session, Message, MessageData(..), url, ship, uid, lastEventId
-    , connect, setupEventSource, messages, ack
+    , connect, connectUnauth, setupEventSource, messages, ack
     , login, scry, spider
     , poke, subscribe, unsubscribe, disconnect
     , genChannelId, genUid
@@ -16,10 +16,10 @@ module Urbit exposing
 
 # Connection Setup
 
-These are all **required** in order to maintain an active connection to an urbit
+These are **required** in order to maintain an active connection to an urbit
 ship and to perform poke/subscription requests.
 
-@docs connect, setupEventSource, messages, ack
+@docs connect, connectUnauth, setupEventSource, messages, ack
 
 
 # Stateless Requests
@@ -166,6 +166,42 @@ connect config tagger =
                 task |> Task.map (always session)
             )
         |> Task.attempt tagger
+
+
+{-| Alternative to [connect](#connect) that does not require a `code`.
+
+**Note:** Ensure the correct cookie is set through some other means beforehand
+or else this will not work. Hosting from within an urbit using the :file-server
+app with public set to false should work, for example.
+
+-}
+connectUnauth :
+    { ship : String
+    , url : String
+    , channelId : String
+    }
+    -> (Result Http.Error Session -> msg)
+    -> Cmd msg
+connectUnauth config tagger =
+    let
+        ( session, cmd ) =
+            poke
+                { ship = config.ship
+                , app = "hood"
+                , mark = "helm-hi"
+                , json = JE.string "opening airlock"
+                , session =
+                    Session
+                        { url = config.url
+                        , ship = config.ship
+                        , uid = config.channelId
+                        , lastEventId = 0
+                        }
+                }
+                identity
+    in
+    cmd
+        |> Cmd.map (Result.map (\_ -> session) >> tagger)
 
 
 {-| This will set up the realtime communication channel with urbit. Because Elm
