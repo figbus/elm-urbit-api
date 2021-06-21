@@ -1,5 +1,7 @@
 # Elm Urbit HTTP API
 
+[![](https://img.shields.io/badge/~-awesome%20urbit-lightgrey)](https://github.com/urbit/awesome-urbit)
+
 This is an Elm wrapper for the [Urbit](https://urbit.org/) HTTP API, making it
 easy to interact with Urbit from any Elm application.
 
