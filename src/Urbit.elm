@@ -129,7 +129,7 @@ followed by [setupEventSource](#setupEventSource) (this must be done as a
 separate step due to the nature of Elm ports).
 
 You can generate a unique `channelId` any way you wish, however the provided
-[channelId](#channelId) helper is recommended.
+[genChannelId](#genChannelId) function is recommended.
 
 -}
 connect :
