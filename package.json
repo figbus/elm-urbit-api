@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "test": "elm-verify-examples && elm-test"
+  },
+  "devDependencies": {
+    "elm-test": "^0.19.1-revision7",
+    "elm-verify-examples": "^5.0.0"
+  }
+}

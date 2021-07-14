@@ -1,0 +1,4 @@
+{
+  "root": "../src",
+  "tests": [ "Urbit.Encoding.Phonemic" ]
+}
