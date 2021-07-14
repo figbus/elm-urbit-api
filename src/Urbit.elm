@@ -1,9 +1,10 @@
 module Urbit exposing
-    ( Session, Message, MessageData(..), url, ship, uid, lastEventId
+    ( Session, url, ship, uid, lastEventId
     , connect, connectUnauth, setupEventSource, messages, ack
     , login, scry, spider
     , poke, subscribe, unsubscribe, disconnect
     , genChannelId, genUid
+    , InMsg, InMsgData(..), OutMsg, send, sendBatch, sendBatchTask, sendTask
     )
 
 {-|
@@ -65,11 +66,20 @@ type Session
         }
 
 
+{-| Represents an outgoing message.
+-}
+type OutMsg
+    = OutMsg
+        { action : String
+        , pairs : List ( String, JE.Value )
+        }
+
+
 {-| Represents an incoming message.
 -}
-type alias Message =
+type alias InMsg =
     { lastEventId : Int
-    , data : MessageData
+    , data : InMsgData
     }
 
 
@@ -85,7 +95,7 @@ In all cases the first `Int` value represents the Id of the message it is
 relevant to.
 
 -}
-type MessageData
+type InMsgData
     = Poke Int (Result String ())
     | Subscribe Int (Result String ())
     | Diff Int JE.Value
@@ -148,20 +158,22 @@ connect config tagger =
         |> Task.andThen
             (\() ->
                 let
+                    session_ =
+                        Session
+                            { url = config.url
+                            , ship = config.ship
+                            , uid = config.channelId
+                            , lastEventId = 0
+                            }
+
                     ( session, task ) =
-                        pokeTask
+                        poke
                             { ship = config.ship
                             , app = "hood"
                             , mark = "helm-hi"
                             , json = JE.string "opening airlock"
-                            , session =
-                                Session
-                                    { url = config.url
-                                    , ship = config.ship
-                                    , uid = config.channelId
-                                    , lastEventId = 0
-                                    }
                             }
+                            |> sendTask session_
                 in
                 task |> Task.map (always session)
             )
@@ -185,20 +197,22 @@ connectUnauth :
 connectUnauth config tagger =
     let
         ( session, cmd ) =
-            poke
-                { ship = config.ship
-                , app = "hood"
-                , mark = "helm-hi"
-                , json = JE.string "opening airlock"
-                , session =
+            let
+                session_ =
                     Session
                         { url = config.url
                         , ship = config.ship
                         , uid = config.channelId
                         , lastEventId = 0
                         }
+            in
+            poke
+                { ship = config.ship
+                , app = "hood"
+                , mark = "helm-hi"
+                , json = JE.string "opening airlock"
                 }
-                identity
+                |> send session_ identity
     in
     cmd
         |> Cmd.map (Result.map (\_ -> session) >> tagger)
@@ -262,7 +276,7 @@ stop accepting any further messages.
 -}
 messages :
     ((JE.Value -> msg) -> Sub msg)
-    -> (Result JD.Error Message -> msg)
+    -> (Result JD.Error InMsg -> msg)
     -> Sub msg
 messages onUrbitMessage tagger =
     onUrbitMessage
@@ -275,19 +289,12 @@ messages onUrbitMessage tagger =
 {-| Acknowledge an incoming message. Must be performed for every incoming
 message received.
 -}
-ack :
-    { lastEventId : Int
-    , session : Session
-    }
-    -> (Result Http.Error () -> msg)
-    -> ( Session, Cmd msg )
-ack config tagger =
-    send
+ack : Int -> OutMsg
+ack lastEventId_ =
+    OutMsg
         { action = "ack"
-        , pairs = [ ( "event-id", JE.int config.lastEventId ) ]
-        , session = config.session
+        , pairs = [ ( "event-id", JE.int lastEventId_ ) ]
         }
-        tagger
 
 
 
@@ -403,24 +410,10 @@ poke :
     , app : String
     , mark : String
     , json : JE.Value
-    , session : Session
     }
-    -> (Result Http.Error () -> msg)
-    -> ( Session, Cmd msg )
-poke config tagger =
-    pokeTask config |> Tuple.mapSecond (Task.attempt tagger)
-
-
-pokeTask :
-    { ship : String
-    , app : String
-    , mark : String
-    , json : JE.Value
-    , session : Session
-    }
-    -> ( Session, Task Http.Error () )
-pokeTask config =
-    sendAppTask
+    -> OutMsg
+poke config =
+    appMsg
         { action = "poke"
         , ship = config.ship
         , app = config.app
@@ -428,7 +421,6 @@ pokeTask config =
             [ ( "mark", JE.string config.mark )
             , ( "json", config.json )
             ]
-        , session = config.session
         }
 
 
@@ -438,100 +430,89 @@ subscribe :
     { ship : String
     , app : String
     , path : String
-    , session : Session
     }
-    -> (Result Http.Error () -> msg)
-    -> ( Session, Cmd msg )
-subscribe config tagger =
-    sendApp
+    -> OutMsg
+subscribe config =
+    appMsg
         { action = "subscribe"
         , ship = config.ship
         , app = config.app
         , pairs = [ ( "path", JE.string config.path ) ]
-        , session = config.session
         }
-        tagger
 
 
 {-| Unsubscribe from an existing subscription.
 -}
-unsubscribe :
-    Int
-    -> Session
-    -> (Result Http.Error () -> msg)
-    -> ( Session, Cmd msg )
-unsubscribe subscription session tagger =
-    send
+unsubscribe : Int -> OutMsg
+unsubscribe subscription =
+    OutMsg
         { action = "unsubscribe"
         , pairs = [ ( "subscription", JE.int subscription ) ]
-        , session = session
         }
-        tagger
 
 
 {-| Safely deletes a channel.
 -}
-disconnect : Session -> (Result Http.Error () -> msg) -> Cmd msg
-disconnect session tagger =
-    send
-        { session = session
-        , action = "delete"
+disconnect : OutMsg
+disconnect =
+    OutMsg
+        { action = "delete"
         , pairs = []
         }
-        tagger
-        |> Tuple.second
 
 
-sendApp :
+appMsg :
     { action : String
     , ship : String
     , app : String
     , pairs : List ( String, JE.Value )
-    , session : Session
     }
-    -> (Result Http.Error () -> msg)
-    -> ( Session, Cmd msg )
-sendApp config tagger =
-    sendAppTask config |> Tuple.mapSecond (Task.attempt tagger)
-
-
-sendAppTask :
-    { action : String
-    , ship : String
-    , app : String
-    , pairs : List ( String, JE.Value )
-    , session : Session
-    }
-    -> ( Session, Task Http.Error () )
-sendAppTask config =
-    sendTask
+    -> OutMsg
+appMsg config =
+    OutMsg
         { action = config.action
         , pairs =
             ( "ship", JE.string config.ship )
                 :: ( "app", JE.string config.app )
                 :: config.pairs
-        , session = config.session
         }
 
 
 send :
-    { action : String
-    , pairs : List ( String, JE.Value )
-    , session : Session
-    }
+    Session
     -> (Result Http.Error () -> msg)
+    -> OutMsg
     -> ( Session, Cmd msg )
-send config tagger =
-    sendTask config |> Tuple.mapSecond (Task.attempt tagger)
+send session tagger outMsg =
+    outMsg
+        |> List.singleton
+        |> sendBatch session tagger
+
+
+sendBatch :
+    Session
+    -> (Result Http.Error () -> msg)
+    -> List OutMsg
+    -> ( Session, Cmd msg )
+sendBatch session tagger outMsgs =
+    sendBatchTask session outMsgs |> Tuple.mapSecond (Task.attempt tagger)
 
 
 sendTask :
-    { action : String
-    , pairs : List ( String, JE.Value )
-    , session : Session
-    }
+    Session
+    -> OutMsg
     -> ( Session, Task Http.Error () )
-sendTask { session, action, pairs } =
+sendTask session outMsg =
+    outMsg
+        |> List.singleton
+        |> sendBatchTask session
+
+
+sendBatchTask :
+    Session
+    -> List OutMsg
+    -> ( Session, Task Http.Error () )
+sendBatchTask session outMsgs =
     let
         (Session sessionData) =
             session
@@ -542,12 +523,17 @@ sendTask { session, action, pairs } =
         , headers = []
         , url = channelUrl session
         , body =
-            [ JE.object
-                (( "id", JE.int (sessionData.lastEventId + 1) )
-                    :: ( "action", JE.string action )
-                    :: pairs
-                )
-            ]
+            outMsgs
+                |> List.indexedMap
+                    (\index (OutMsg { action, pairs }) ->
+                        JE.object
+                            (( "id"
+                             , JE.int <| sessionData.lastEventId + 1 + index
+                             )
+                                :: ( "action", JE.string action )
+                                :: pairs
+                            )
+                    )
                 |> JE.list identity
                 |> Http.jsonBody
         , resolver =
@@ -587,15 +573,15 @@ channelUrl (Session session) =
 -- DECODERS
 
 
-incomingMessageDecoder : Decoder (Result JD.Error Message)
+incomingMessageDecoder : Decoder (Result JD.Error InMsg)
 incomingMessageDecoder =
     JD.field "message" messageDecoder
         |> JD.map Ok
 
 
-messageDecoder : Decoder Message
+messageDecoder : Decoder InMsg
 messageDecoder =
-    JD.map2 Message
+    JD.map2 InMsg
         (JD.field "lastEventId" lastEventIdDecoder)
         (JD.field "data" dataDecoder)
 
@@ -614,7 +600,7 @@ lastEventIdDecoder =
             )
 
 
-dataDecoder : Decoder MessageData
+dataDecoder : Decoder InMsgData
 dataDecoder =
     let
         responseDecoder =

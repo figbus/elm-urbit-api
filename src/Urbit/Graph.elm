@@ -188,18 +188,12 @@ getGraph { url, resource } =
 
 {-| Subscribe to changes to the graph store.
 -}
-subscribeToGraphUpdates :
-    { ship : String
-    , session : Urbit.Session
-    }
-    -> (Result Http.Error () -> msg)
-    -> ( Urbit.Session, Cmd msg )
-subscribeToGraphUpdates { ship, session } =
+subscribeToGraphUpdates : String -> Urbit.OutMsg
+subscribeToGraphUpdates ship =
     Urbit.subscribe
         { ship = ship
         , app = "graph-store"
         , path = "/updates"
-        , session = session
         }
 
 
@@ -210,15 +204,13 @@ addNodes :
     , nodes : List Node
     , session : Urbit.Session
     }
-    -> (Result Http.Error () -> msg)
-    -> ( Urbit.Session, Cmd msg )
+    -> Urbit.OutMsg
 addNodes { resource, nodes, session } =
     Urbit.poke
         { ship = Urbit.ship session
         , app = "graph-push-hook"
         , mark = "graph-update-2"
         , json = encodeAddNodesGraphUpdate resource nodes
-        , session = session
         }
 
 

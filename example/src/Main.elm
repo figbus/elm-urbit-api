@@ -12,7 +12,7 @@ import Random
 import Return
 import Task
 import Time exposing (Posix)
-import Urbit exposing (MessageData(..))
+import Urbit exposing (InMsgData(..))
 import Urbit.Graph as Graph
 
 
@@ -61,12 +61,12 @@ init entropy =
 
 
 type Msg
-    = NoOp
+    = Ignore
     | GotConfigInput ConfigInput
     | ConnectButtonPressed
     | GotInitTime Time.Posix
     | GotConnection (Result Http.Error Urbit.Session)
-    | GotUrbitMessage (Result JD.Error Urbit.Message)
+    | GotUrbitMessage (Result JD.Error Urbit.InMsg)
     | GotScry (Result Http.Error Graph.Update)
     | TextInput String
     | FormSubmitted
@@ -76,7 +76,7 @@ type Msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        NoOp ->
+        Ignore ->
             ( model, Cmd.none )
 
         GotConfigInput configInput ->
@@ -102,11 +102,8 @@ update msg model =
             )
 
         GotConnection (Ok session) ->
-            Graph.subscribeToGraphUpdates
-                { ship = model.configInput.ourShip
-                , session = session
-                }
-                (\_ -> NoOp)
+            Graph.subscribeToGraphUpdates model.configInput.ourShip
+                |> Urbit.send session (\_ -> Ignore)
                 |> Return.andThen
                     (\newSession ->
                         ( { model | session = Just newSession }
@@ -130,17 +127,16 @@ update msg model =
         GotUrbitMessage (Ok urbitMsg) ->
             case model.session of
                 Just session ->
-                    Urbit.ack
-                        { lastEventId = urbitMsg.lastEventId
-                        , session = session
-                        }
-                        (\_ -> NoOp)
-                        |> Return.andThen
+                    let
+                        ( newModel, outMsgs ) =
+                            handleUrbitMessage urbitMsg.data model
+                    in
+                    Urbit.ack urbitMsg.lastEventId
+                        :: outMsgs
+                        |> Urbit.sendBatch session (\_ -> Ignore)
+                        |> Return.map
                             (\newSession ->
-                                handleUrbitMessage
-                                    urbitMsg.data
-                                    newSession
-                                    { model | session = Just newSession }
+                                { newModel | session = Just newSession }
                             )
 
                 Nothing ->
@@ -167,7 +163,7 @@ update msg model =
                 , graphModule = "chat"
                 , mark = "graph-validator-chat"
                 }
-                (always NoOp)
+                (always Ignore)
             )
 
         GotScry (Err _) ->
@@ -202,22 +198,21 @@ update msg model =
                             }
                         ]
                     }
-                    (\_ -> NoOp)
+                    (\_ -> Ignore)
                 )
 
 
 handleUrbitMessage :
-    Urbit.MessageData
-    -> Urbit.Session
+    Urbit.InMsgData
     -> Model
-    -> ( Model, Cmd Msg )
-handleUrbitMessage data session model =
+    -> ( Model, List Urbit.OutMsg )
+handleUrbitMessage data model =
     case data of
         Poke _ _ ->
-            ( model, Cmd.none )
+            ( model, [] )
 
         Subscribe _ _ ->
-            ( model, Cmd.none )
+            ( model, [] )
 
         Diff _ diff ->
             ( { model
@@ -229,17 +224,19 @@ handleUrbitMessage data session model =
                         Err _ ->
                             model.graphStore
               }
-            , Cmd.none
+            , []
             )
 
         Quit _ ->
-            Graph.subscribeToGraphUpdates
-                { ship = model.configInput.ourShip
-                , session = session
-                }
-                (\_ -> NoOp)
-                |> Return.map
-                    (\newSession2 -> { model | session = Just newSession2 })
+            ( model
+            , [ Graph.subscribeToGraphUpdates model.configInput.ourShip ]
+            )
+
+
+
+-- |> Urbit.send session (\_ -> Ignore)
+-- |> Return.map
+--     (\newSession -> { model | session = Just newSession })
 
 
 subscriptions : model -> Sub Msg
@@ -324,7 +321,7 @@ view model =
 
             Just _ ->
                 [ div [ style "margin" "1rem 0" ] [ text status ]
-                , Html.form [ onSubmit NoOp ]
+                , Html.form [ onSubmit Ignore ]
                     [ input
                         [ type_ "text"
                         , value model.textInput
