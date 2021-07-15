@@ -1,5 +1,6 @@
 module Urbit.Graph exposing
     ( Store, Resource, emptyStore, getFromStore
+    , parseResource
     , Graph, Node, getNodeChildren, getNodePost, Post, Index, newNode
     , textContent, urlContent, mentionContent, codeContent
     , getGraph, subscribeToGraphUpdates, addNodes, addNodesSpider
@@ -13,6 +14,7 @@ module Urbit.Graph exposing
 # Store
 
 @docs Store, Resource, emptyStore, getFromStore
+@docs parseResource
 
 
 # Graph
@@ -37,8 +39,11 @@ import Dict exposing (Dict)
 import Http
 import Json.Decode as JD
 import Json.Encode as JE
+import Parser as P exposing ((|.), (|=), DeadEnd)
 import Time
 import Urbit
+import Urbit.Encoding.Atom exposing (Atom)
+import Urbit.Encoding.Phonemic as Phonemic
 
 
 
@@ -54,7 +59,7 @@ type Store
 {-| A pair of a ship and a name uniquely identifying a graph.
 -}
 type alias Resource =
-    { ship : String
+    { ship : Atom
     , name : String
     }
 
@@ -71,6 +76,33 @@ emptyStore =
 getFromStore : Resource -> Store -> Maybe Graph
 getFromStore resource (Store store) =
     Dict.get (resourceToKey resource) store
+
+
+{-| Parses a resource string into a `Resource` type.
+
+    parseResource "~zod/hello"
+
+-}
+parseResource : String -> Result (List DeadEnd) Resource
+parseResource resource =
+    let
+        parser =
+            P.succeed Resource
+                |= (P.getChompedString (P.chompUntil "/")
+                        |> P.andThen
+                            (\ship ->
+                                case Phonemic.fromPatp ship of
+                                    Ok atom ->
+                                        P.succeed atom
+
+                                    Err _ ->
+                                        P.problem ""
+                            )
+                   )
+                |. P.symbol "/"
+                |= P.getChompedString (P.chompWhile (\_ -> True))
+    in
+    P.run parser resource
 
 
 
@@ -107,7 +139,7 @@ getNodeChildren (Node _ children) =
 -}
 type alias Post =
     { index : Index
-    , author : String
+    , author : Atom
     , timeSent : Time.Posix
     , contents : List JE.Value
     , hash : Maybe String
@@ -180,7 +212,11 @@ getGraph { url, resource } =
     Urbit.scry
         { url = url
         , app = "graph-store"
-        , path = "/graph/" ++ resource.ship ++ "/" ++ resource.name
+        , path =
+            "/graph/"
+                ++ Phonemic.toPatp resource.ship
+                ++ "/"
+                ++ resource.name
         , mark = "json"
         , decoder = updateDecoder
         }
@@ -188,7 +224,7 @@ getGraph { url, resource } =
 
 {-| Subscribe to changes to the graph store.
 -}
-subscribeToGraphUpdates : String -> Urbit.OutMsg
+subscribeToGraphUpdates : Atom -> Urbit.OutMsg
 subscribeToGraphUpdates ship =
     Urbit.subscribe
         { ship = ship
@@ -272,7 +308,7 @@ createUnmanagedGraph :
     , resource : Resource
     , title : String
     , description : String
-    , invites : List String
+    , invites : List Atom
     , graphModule : String
     , mark : String
     }
@@ -296,7 +332,11 @@ createUnmanagedGraph config =
                                 [ ( "invite"
                                   , JE.object
                                         [ ( "pending"
-                                          , JE.list JE.string config.invites
+                                          , config.invites
+                                                |> JE.list
+                                                    (Phonemic.toPatp
+                                                        >> JE.string
+                                                    )
                                           )
                                         ]
                                   )
@@ -418,7 +458,7 @@ updateDecoder =
         resourceDecoder =
             JD.field "resource" <|
                 JD.map2 Resource
-                    (JD.field "ship" JD.string |> JD.map ((++) "~"))
+                    (JD.field "ship" shipDecoder)
                     (JD.field "name" JD.string)
     in
     JD.field "graph-update" <|
@@ -466,7 +506,7 @@ nodeDecoder =
             JD.oneOf
                 [ JD.map5 Post
                     (JD.field "index" JD.string |> JD.map parseIndex)
-                    (JD.field "author" JD.string)
+                    (JD.field "author" shipDecoder)
                     (JD.field "time-sent" JD.int |> JD.map Time.millisToPosix)
                     (JD.field "contents" <| JD.list JD.value)
                     (JD.field "hash" <| JD.maybe JD.string)
@@ -486,6 +526,21 @@ filterDeletedNodes =
         (\( index, maybeNode ) ->
             maybeNode |> Maybe.map (\node -> ( index, node ))
         )
+
+
+shipDecoder : JD.Decoder Atom
+shipDecoder =
+    JD.string
+        |> JD.andThen
+            (\ship ->
+                case Phonemic.fromPatp ("~" ++ ship) of
+                    Ok atom ->
+                        JD.succeed atom
+
+                    Err deadEnds ->
+                        JD.fail <|
+                            P.deadEndsToString deadEnds
+            )
 
 
 
@@ -531,7 +586,7 @@ encodeGraphCreate config =
 encodeResource : Resource -> JE.Value
 encodeResource resource =
     JE.object
-        [ ( "ship", JE.string resource.ship )
+        [ ( "ship", JE.string (Phonemic.toPatp resource.ship) )
         , ( "name", JE.string resource.name )
         ]
 
@@ -553,7 +608,7 @@ encodeNode (Node post children) =
         [ ( "post"
           , JE.object
                 [ ( "index", JE.string <| encodeIndex post.index )
-                , ( "author", JE.string post.author )
+                , ( "author", JE.string (Phonemic.toPatp post.author) )
                 , ( "time-sent", JE.int <| Time.posixToMillis post.timeSent )
                 , ( "signatures", JE.list identity [] )
                 , ( "contents", JE.list identity post.contents )
@@ -587,4 +642,4 @@ parseIndex =
 
 resourceToKey : Resource -> String
 resourceToKey { ship, name } =
-    ship ++ name
+    Phonemic.toPatp ship ++ "/" ++ name

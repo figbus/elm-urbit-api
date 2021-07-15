@@ -1,10 +1,12 @@
 module Urbit exposing
     ( Session, url, ship, uid, lastEventId
+    , InMsg, InMsgData(..)
+    , OutMsg
     , connect, connectUnauth, setupEventSource, messages, ack
-    , login, scry, spider
     , poke, subscribe, unsubscribe, disconnect
+    , send, sendBatch, sendTask, sendBatchTask
+    , login, scry, spider
     , genChannelId, genUid
-    , InMsg, InMsgData(..), OutMsg, send, sendBatch, sendBatchTask, sendTask
     )
 
 {-|
@@ -12,7 +14,9 @@ module Urbit exposing
 
 # Data Types
 
-@docs Session, Message, MessageData, url, ship, uid, lastEventId
+@docs Session, url, ship, uid, lastEventId
+@docs InMsg, InMsgData
+@docs OutMsg
 
 
 # Connection Setup
@@ -23,17 +27,18 @@ ship and to perform poke/subscription requests.
 @docs connect, connectUnauth, setupEventSource, messages, ack
 
 
+# Stateful Requests
+
+@docs poke, subscribe, unsubscribe, disconnect
+@docs send, sendBatch, sendTask, sendBatchTask
+
+
 # Stateless Requests
 
 These do not require an active connection, however they do at least require you
 to be authenticated.
 
 @docs login, scry, spider
-
-
-# Stateful Requests
-
-@docs poke, subscribe, unsubscribe, disconnect
 
 
 # Helpers
@@ -49,6 +54,8 @@ import RadixInt
 import Random
 import Task exposing (Task)
 import Time
+import Urbit.Encoding.Atom exposing (Atom)
+import Urbit.Encoding.Phonemic as Phonemic
 
 
 
@@ -60,7 +67,7 @@ import Time
 type Session
     = Session
         { url : String
-        , ship : String
+        , ship : Atom
         , uid : String
         , lastEventId : Int
         }
@@ -111,7 +118,7 @@ url (Session session) =
 
 {-| Get a Session's ship.
 -}
-ship : Session -> String
+ship : Session -> Atom
 ship (Session session) =
     session.ship
 
@@ -143,7 +150,7 @@ You can generate a unique `channelId` any way you wish, however the provided
 
 -}
 connect :
-    { ship : String
+    { ship : Atom
     , url : String
     , channelId : String
     , code : String
@@ -188,7 +195,7 @@ app with public set to false should work, for example.
 
 -}
 connectUnauth :
-    { ship : String
+    { ship : Atom
     , url : String
     , channelId : String
     }
@@ -286,8 +293,8 @@ messages onUrbitMessage tagger =
         )
 
 
-{-| Acknowledge an incoming message. Must be performed for every incoming
-message received.
+{-| Acknowledge an incoming message by its Id. Must be performed for every
+incoming message received.
 -}
 ack : Int -> OutMsg
 ack lastEventId_ =
@@ -298,11 +305,183 @@ ack lastEventId_ =
 
 
 
+-- STATEFUL REQUESTS
+
+
+{-| Poke an app on a ship.
+-}
+poke :
+    { ship : Atom
+    , app : String
+    , mark : String
+    , json : JE.Value
+    }
+    -> OutMsg
+poke config =
+    appMsg
+        { action = "poke"
+        , ship = config.ship
+        , app = config.app
+        , pairs =
+            [ ( "mark", JE.string config.mark )
+            , ( "json", config.json )
+            ]
+        }
+
+
+{-| Subscribe to ship events on some path.
+-}
+subscribe :
+    { ship : Atom
+    , app : String
+    , path : String
+    }
+    -> OutMsg
+subscribe config =
+    appMsg
+        { action = "subscribe"
+        , ship = config.ship
+        , app = config.app
+        , pairs = [ ( "path", JE.string config.path ) ]
+        }
+
+
+{-| Unsubscribe from an existing subscription by its Id.
+-}
+unsubscribe : Int -> OutMsg
+unsubscribe subscription =
+    OutMsg
+        { action = "unsubscribe"
+        , pairs = [ ( "subscription", JE.int subscription ) ]
+        }
+
+
+{-| Safely deletes a channel.
+-}
+disconnect : OutMsg
+disconnect =
+    OutMsg
+        { action = "delete"
+        , pairs = []
+        }
+
+
+appMsg :
+    { action : String
+    , ship : Atom
+    , app : String
+    , pairs : List ( String, JE.Value )
+    }
+    -> OutMsg
+appMsg config =
+    OutMsg
+        { action = config.action
+        , pairs =
+            ( "ship"
+            , JE.string (config.ship |> Phonemic.toPatp |> String.dropLeft 1)
+            )
+                :: ( "app", JE.string config.app )
+                :: config.pairs
+        }
+
+
+{-| Sends an outgoing message to urbit. Returns a tuple of a new session and
+the command.
+-}
+send :
+    Session
+    -> (Result Http.Error () -> msg)
+    -> OutMsg
+    -> ( Session, Cmd msg )
+send session tagger outMsg =
+    outMsg
+        |> List.singleton
+        |> sendBatch session tagger
+
+
+{-| Sends multiple outgoing messages to urbit in one request. Returns a tuple of
+a new session and the command.
+-}
+sendBatch :
+    Session
+    -> (Result Http.Error () -> msg)
+    -> List OutMsg
+    -> ( Session, Cmd msg )
+sendBatch session tagger outMsgs =
+    sendBatchTask session outMsgs |> Tuple.mapSecond (Task.attempt tagger)
+
+
+{-| Sends an outgoing message to urbit as a task. Returns a tuple of a new
+session and the task.
+-}
+sendTask : Session -> OutMsg -> ( Session, Task Http.Error () )
+sendTask session outMsg =
+    outMsg
+        |> List.singleton
+        |> sendBatchTask session
+
+
+{-| Sends multiple outgoing messages to urbit in one request as a task. Returns
+a tuple of a new session and the task.
+-}
+sendBatchTask : Session -> List OutMsg -> ( Session, Task Http.Error () )
+sendBatchTask session outMsgs =
+    let
+        (Session sessionData) =
+            session
+    in
+    ( Session
+        { sessionData
+            | lastEventId = sessionData.lastEventId + List.length outMsgs
+        }
+    , Http.riskyTask
+        { method = "PUT"
+        , headers = []
+        , url = channelUrl session
+        , body =
+            outMsgs
+                |> List.indexedMap
+                    (\index (OutMsg { action, pairs }) ->
+                        JE.object
+                            (( "id"
+                             , JE.int <| sessionData.lastEventId + 1 + index
+                             )
+                                :: ( "action", JE.string action )
+                                :: pairs
+                            )
+                    )
+                |> JE.list identity
+                |> Http.jsonBody
+        , resolver =
+            Http.bytesResolver
+                (\response ->
+                    case response of
+                        Http.BadUrl_ url_ ->
+                            Err (Http.BadUrl url_)
+
+                        Http.Timeout_ ->
+                            Err Http.Timeout
+
+                        Http.NetworkError_ ->
+                            Err Http.NetworkError
+
+                        Http.BadStatus_ metadata _ ->
+                            Err (Http.BadStatus metadata.statusCode)
+
+                        Http.GoodStatus_ _ _ ->
+                            Result.mapError Http.BadBody (Ok ())
+                )
+        , timeout = Nothing
+        }
+    )
+
+
+
 -- STATELESS REQUESTS
 
 
 {-| Login to an urbit without maintaining an active connection. This will allow
-for stateless scry and spider requests that require authentication but _not_
+for stateless scry and spider requests that require authentication, but not
 others.
 
 **Note:** This is not required if you have already used [connect](#connect) to
@@ -397,167 +576,6 @@ spider config tagger =
         , timeout = Nothing
         , tracker = Nothing
         }
-
-
-
--- STATEFUL REQUESTS
-
-
-{-| Poke an app on a ship.
--}
-poke :
-    { ship : String
-    , app : String
-    , mark : String
-    , json : JE.Value
-    }
-    -> OutMsg
-poke config =
-    appMsg
-        { action = "poke"
-        , ship = config.ship
-        , app = config.app
-        , pairs =
-            [ ( "mark", JE.string config.mark )
-            , ( "json", config.json )
-            ]
-        }
-
-
-{-| Subscribe to ship events on some path.
--}
-subscribe :
-    { ship : String
-    , app : String
-    , path : String
-    }
-    -> OutMsg
-subscribe config =
-    appMsg
-        { action = "subscribe"
-        , ship = config.ship
-        , app = config.app
-        , pairs = [ ( "path", JE.string config.path ) ]
-        }
-
-
-{-| Unsubscribe from an existing subscription.
--}
-unsubscribe : Int -> OutMsg
-unsubscribe subscription =
-    OutMsg
-        { action = "unsubscribe"
-        , pairs = [ ( "subscription", JE.int subscription ) ]
-        }
-
-
-{-| Safely deletes a channel.
--}
-disconnect : OutMsg
-disconnect =
-    OutMsg
-        { action = "delete"
-        , pairs = []
-        }
-
-
-appMsg :
-    { action : String
-    , ship : String
-    , app : String
-    , pairs : List ( String, JE.Value )
-    }
-    -> OutMsg
-appMsg config =
-    OutMsg
-        { action = config.action
-        , pairs =
-            ( "ship", JE.string config.ship )
-                :: ( "app", JE.string config.app )
-                :: config.pairs
-        }
-
-
-send :
-    Session
-    -> (Result Http.Error () -> msg)
-    -> OutMsg
-    -> ( Session, Cmd msg )
-send session tagger outMsg =
-    outMsg
-        |> List.singleton
-        |> sendBatch session tagger
-
-
-sendBatch :
-    Session
-    -> (Result Http.Error () -> msg)
-    -> List OutMsg
-    -> ( Session, Cmd msg )
-sendBatch session tagger outMsgs =
-    sendBatchTask session outMsgs |> Tuple.mapSecond (Task.attempt tagger)
-
-
-sendTask :
-    Session
-    -> OutMsg
-    -> ( Session, Task Http.Error () )
-sendTask session outMsg =
-    outMsg
-        |> List.singleton
-        |> sendBatchTask session
-
-
-sendBatchTask :
-    Session
-    -> List OutMsg
-    -> ( Session, Task Http.Error () )
-sendBatchTask session outMsgs =
-    let
-        (Session sessionData) =
-            session
-    in
-    ( Session { sessionData | lastEventId = sessionData.lastEventId + 1 }
-    , Http.riskyTask
-        { method = "PUT"
-        , headers = []
-        , url = channelUrl session
-        , body =
-            outMsgs
-                |> List.indexedMap
-                    (\index (OutMsg { action, pairs }) ->
-                        JE.object
-                            (( "id"
-                             , JE.int <| sessionData.lastEventId + 1 + index
-                             )
-                                :: ( "action", JE.string action )
-                                :: pairs
-                            )
-                    )
-                |> JE.list identity
-                |> Http.jsonBody
-        , resolver =
-            Http.bytesResolver
-                (\response ->
-                    case response of
-                        Http.BadUrl_ url_ ->
-                            Err (Http.BadUrl url_)
-
-                        Http.Timeout_ ->
-                            Err Http.Timeout
-
-                        Http.NetworkError_ ->
-                            Err Http.NetworkError
-
-                        Http.BadStatus_ metadata _ ->
-                            Err (Http.BadStatus metadata.statusCode)
-
-                        Http.GoodStatus_ _ _ ->
-                            Result.mapError Http.BadBody (Ok ())
-                )
-        , timeout = Nothing
-        }
-    )
 
 
 

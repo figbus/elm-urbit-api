@@ -13,6 +13,7 @@ import Return
 import Task
 import Time exposing (Posix)
 import Urbit exposing (InMsgData(..))
+import Urbit.Encoding.Phonemic as Phonemic
 import Urbit.Graph as Graph
 
 
@@ -29,9 +30,15 @@ main =
 type alias Model =
     { entropy : Int
     , configInput : ConfigInput
-    , session : Maybe Urbit.Session
+    , connectionInfo : Maybe ConnectionInfo
     , graphStore : Graph.Store
     , textInput : String
+    }
+
+
+type alias ConnectionInfo =
+    { resource : Graph.Resource
+    , session : Urbit.Session
     }
 
 
@@ -48,11 +55,11 @@ init entropy =
     ( { entropy = entropy
       , configInput =
             { url = "http://localhost:8080"
-            , ourShip = "zod"
+            , ourShip = "~zod"
             , code = "lidlut-tabwed-pillex-ridrup"
             , resource = "~zod/airlock-test"
             }
-      , session = Nothing
+      , connectionInfo = Nothing
       , graphStore = Graph.emptyStore
       , textInput = ""
       }
@@ -65,7 +72,7 @@ type Msg
     | GotConfigInput ConfigInput
     | ConnectButtonPressed
     | GotInitTime Time.Posix
-    | GotConnection (Result Http.Error Urbit.Session)
+    | GotConnection Graph.Resource (Result Http.Error Urbit.Session)
     | GotUrbitMessage (Result JD.Error Urbit.InMsg)
     | GotScry (Result Http.Error Graph.Update)
     | TextInput String
@@ -88,55 +95,77 @@ update msg model =
             )
 
         GotInitTime now ->
-            ( model
-            , Urbit.connect
-                { ship = model.configInput.ourShip
-                , url = model.configInput.url
-                , channelId =
-                    Random.initialSeed model.entropy
-                        |> Random.step (Urbit.genChannelId now)
-                        |> Tuple.first
-                , code = model.configInput.code
-                }
-                GotConnection
-            )
+            case
+                ( Phonemic.fromPatp model.configInput.ourShip
+                , Graph.parseResource model.configInput.resource
+                )
+            of
+                ( Ok ship, Ok resource ) ->
+                    ( model
+                    , Urbit.connect
+                        { ship = ship
+                        , url = model.configInput.url
+                        , channelId =
+                            Random.initialSeed model.entropy
+                                |> Random.step (Urbit.genChannelId now)
+                                |> Tuple.first
+                        , code = model.configInput.code
+                        }
+                        (GotConnection resource)
+                    )
 
-        GotConnection (Ok session) ->
-            Graph.subscribeToGraphUpdates model.configInput.ourShip
+                _ ->
+                    ( model, Cmd.none )
+
+        GotConnection resource (Ok session) ->
+            Graph.subscribeToGraphUpdates (Urbit.ship session)
                 |> Urbit.send session (\_ -> Ignore)
                 |> Return.andThen
                     (\newSession ->
-                        ( { model | session = Just newSession }
+                        ( { model
+                            | connectionInfo =
+                                Just
+                                    { session = newSession
+                                    , resource = resource
+                                    }
+                          }
                         , Cmd.batch
                             [ Urbit.setupEventSource
                                 setupUrbitEventSource
                                 newSession
                             , Graph.getGraph
                                 { url = model.configInput.url
-                                , resource =
-                                    parseResource model.configInput.resource
+                                , resource = resource
                                 }
                                 GotScry
                             ]
                         )
                     )
 
-        GotConnection (Err _) ->
+        GotConnection _ (Err _) ->
             ( model, Cmd.none )
 
         GotUrbitMessage (Ok urbitMsg) ->
-            case model.session of
-                Just session ->
+            case model.connectionInfo of
+                Just connectionInfo ->
                     let
                         ( newModel, outMsgs ) =
-                            handleUrbitMessage urbitMsg.data model
+                            handleUrbitMessage urbitMsg.data
+                                connectionInfo.session
+                                model
                     in
                     Urbit.ack urbitMsg.lastEventId
                         :: outMsgs
-                        |> Urbit.sendBatch session (\_ -> Ignore)
+                        |> Urbit.sendBatch connectionInfo.session (\_ -> Ignore)
                         |> Return.map
                             (\newSession ->
-                                { newModel | session = Just newSession }
+                                { newModel
+                                    | connectionInfo =
+                                        Just
+                                            { connectionInfo
+                                                | session = newSession
+                                            }
+                                }
                             )
 
                 Nothing ->
@@ -153,18 +182,23 @@ update msg model =
             )
 
         GotScry (Err (BadStatus 404)) ->
-            ( model
-            , Graph.createUnmanagedGraph
-                { url = model.configInput.url
-                , resource = parseResource model.configInput.resource
-                , title = "Airlock Test"
-                , description = ""
-                , invites = []
-                , graphModule = "chat"
-                , mark = "graph-validator-chat"
-                }
-                (always Ignore)
-            )
+            case model.connectionInfo of
+                Just { resource } ->
+                    ( model
+                    , Graph.createUnmanagedGraph
+                        { url = model.configInput.url
+                        , resource = resource
+                        , title = "Airlock Test"
+                        , description = ""
+                        , invites = []
+                        , graphModule = "chat"
+                        , mark = "graph-validator-chat"
+                        }
+                        (always Ignore)
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
 
         GotScry (Err _) ->
             ( model, Cmd.none )
@@ -178,35 +212,37 @@ update msg model =
             )
 
         GotTimeForPost now ->
-            if String.isEmpty model.textInput then
-                ( model, Cmd.none )
+            case ( model.connectionInfo, String.isEmpty model.textInput ) of
+                ( Just { session, resource }, False ) ->
+                    ( { model | textInput = "" }
+                    , Graph.addNodesSpider
+                        { url = model.configInput.url
+                        , resource = resource
+                        , nodes =
+                            [ Graph.newNode
+                                { index =
+                                    [ String.fromInt (Time.posixToMillis now)
+                                    ]
+                                , author = Urbit.ship session
+                                , timeSent = now
+                                , hash = Nothing
+                                , contents = [ Graph.textContent model.textInput ]
+                                }
+                            ]
+                        }
+                        (\_ -> Ignore)
+                    )
 
-            else
-                ( { model | textInput = "" }
-                , Graph.addNodesSpider
-                    { url = model.configInput.url
-                    , resource = parseResource model.configInput.resource
-                    , nodes =
-                        [ Graph.newNode
-                            { index =
-                                [ String.fromInt (Time.posixToMillis now)
-                                ]
-                            , author = "~" ++ model.configInput.ourShip
-                            , timeSent = now
-                            , hash = Nothing
-                            , contents = [ Graph.textContent model.textInput ]
-                            }
-                        ]
-                    }
-                    (\_ -> Ignore)
-                )
+                _ ->
+                    ( model, Cmd.none )
 
 
 handleUrbitMessage :
     Urbit.InMsgData
+    -> Urbit.Session
     -> Model
     -> ( Model, List Urbit.OutMsg )
-handleUrbitMessage data model =
+handleUrbitMessage data session model =
     case data of
         Poke _ _ ->
             ( model, [] )
@@ -229,14 +265,8 @@ handleUrbitMessage data model =
 
         Quit _ ->
             ( model
-            , [ Graph.subscribeToGraphUpdates model.configInput.ourShip ]
+            , [ Graph.subscribeToGraphUpdates (Urbit.ship session) ]
             )
-
-
-
--- |> Urbit.send session (\_ -> Ignore)
--- |> Return.map
---     (\newSession -> { model | session = Just newSession })
 
 
 subscriptions : model -> Sub Msg
@@ -270,10 +300,9 @@ view model =
                         []
                     ]
 
-            latestDateNode =
+            latestDateNode resource =
                 model.graphStore
-                    |> Graph.getFromStore
-                        (parseResource model.configInput.resource)
+                    |> Graph.getFromStore resource
                     |> Maybe.withDefault Dict.empty
                     |> Dict.toList
                     |> List.sortBy
@@ -286,8 +315,8 @@ view model =
                     |> List.reverse
                     |> List.head
 
-            status =
-                case latestDateNode of
+            status resource =
+                case latestDateNode resource of
                     Just ( _, node ) ->
                         node
                             |> Graph.getNodePost
@@ -302,7 +331,7 @@ view model =
                     Nothing ->
                         "Type something!"
         in
-        case model.session of
+        case model.connectionInfo of
             Nothing ->
                 [ configInputField "Url"
                     configInput.url
@@ -319,8 +348,8 @@ view model =
                 , button [ onClick ConnectButtonPressed ] [ text "Connect" ]
                 ]
 
-            Just _ ->
-                [ div [ style "margin" "1rem 0" ] [ text status ]
+            Just { resource } ->
+                [ div [ style "margin" "1rem 0" ] [ text (status resource) ]
                 , Html.form [ onSubmit Ignore ]
                     [ input
                         [ type_ "text"
@@ -332,24 +361,6 @@ view model =
                     ]
                 ]
     }
-
-
-
--- HELPERS
-
-
-parseResource : String -> Graph.Resource
-parseResource resource =
-    case String.split "/" resource of
-        [ ship, name ] ->
-            { ship = ship
-            , name = name
-            }
-
-        _ ->
-            { ship = "~zod"
-            , name = "airlock-test"
-            }
 
 
 
