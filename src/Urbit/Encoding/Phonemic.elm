@@ -1,31 +1,24 @@
 module Urbit.Encoding.Phonemic exposing
-    ( toPatp, fromPatp
-    , toPatq, fromPatq
+    ( toPatp, fromPatp, patpParser
+    , toPatq, fromPatq, patqParser
     )
 
 {-| Encoding/Decoding module for urbit @p (scrambled) and @q (unscrambled)
 representations of numbers, in accordance with <https://urbit.org/docs/hoon/reference/auras>.
-
-**Note:** This module relies on the `BigInt` type from
-[cmditch/elm-bigint](https://package.elm-lang.org/packages/cmditch/elm-bigint/latest)
-in order to properly handle the very large numbers you typically run into while
-working with these representations, which often goes outside the range of what
-is considered "safe" in Elm. It is recommended to familiarize yourself with this
-package first.
 
 
 # @p
 
 Phonemic Base (Ship Names)
 
-@docs toPatp, fromPatp
+@docs toPatp, fromPatp, patpParser
 
 
 # @q
 
 Phonemic Base, Unscrambled
 
-@docs toPatq, fromPatq
+@docs toPatq, fromPatq, patqParser
 
 -}
 
@@ -33,6 +26,8 @@ import BigInt exposing (BigInt)
 import Bitwise
 import Murmur3
 import Parser as P exposing ((|.), (|=), DeadEnd, Parser)
+import Urbit.Encoding.Atom as Atom exposing (Atom)
+import Urbit.Encoding.Shared exposing (zero)
 import Word.Hex
 
 
@@ -42,30 +37,74 @@ import Word.Hex
 
 {-| Try to convert a BigInt to a @p encoded string, failing on negative numbers.
 
-    import BigInt
+    import Urbit.Encoding.Atom as Atom
 
-    toPatp (BigInt.fromInt 65536) --> Just "~dapnep-ronmyl"
+    Atom.fromInt 65536 |> Maybe.map toPatp
+    --> Just "~dapnep-ronmyl"
 
 -}
-toPatp : BigInt -> Maybe String
+toPatp : Atom -> String
 toPatp =
-    scramble >> encoder Patp
+    Atom.toBigInt >> scramble >> encoder Patp
 
 
 {-| Try to convert a @p encoded string into a BigInt, failing on improperly
 formatted strings.
 
+    import Urbit.Encoding.Atom as Atom
     import BigInt
 
     fromPatp "~sampel-palnet"
-        |> Result.map BigInt.toString
+        |> Result.map (Atom.toBigInt >> BigInt.toString)
     --> Ok "1624961343"
 
 -}
-fromPatp : String -> Result (List DeadEnd) BigInt
+fromPatp : String -> Result (List DeadEnd) Atom
 fromPatp patp =
-    P.run patpRadixParser patp
-        |> Result.map (radixToBigInt >> unscramble)
+    P.run patpParser patp
+
+
+{-| Parser for @p encoded strings.
+-}
+patpParser : Parser Atom
+patpParser =
+    let
+        parseExactlyFourPairs : List Int -> Parser (P.Step state (List Int))
+        parseExactlyFourPairs digits =
+            P.succeed
+                (\( pre1, suf1 ) ( pre2, suf2 ) ( pre3, suf3 ) ( pre4, suf4 ) ->
+                    P.Done
+                        (suf4
+                            :: pre4
+                            :: suf3
+                            :: pre3
+                            :: suf2
+                            :: pre2
+                            :: suf1
+                            :: pre1
+                            :: digits
+                        )
+                )
+                |. P.symbol "-"
+                |= dashPairParser
+                |= dashPairParser
+                |= dashPairParser
+                |= dashPairParser
+    in
+    headParser
+        |> P.andThen (dashPairsParser (Just 4))
+        |> P.andThen
+            (\head ->
+                P.loop head
+                    (\digits ->
+                        P.oneOf
+                            [ parseExactlyFourPairs digits
+                            , P.succeed (\() -> P.Done digits)
+                                |= P.end
+                            ]
+                    )
+            )
+        |> P.andThen (radixToBigInt >> unscramble >> bigIntToAtomParser)
 
 
 
@@ -74,30 +113,40 @@ fromPatp patp =
 
 {-| Try to convert a BigInt to a @q encoded string, failing on negative numbers.
 
-    import BigInt
+    import Urbit.Encoding.Atom as Atom
 
-    toPatq (BigInt.fromInt 5) --> Just "~per"
+    Atom.fromInt 5 |> Maybe.map toPatq
+    --> Just "~per"
 
 -}
-toPatq : BigInt -> Maybe String
+toPatq : Atom -> String
 toPatq =
-    encoder Patq
+    Atom.toBigInt >> encoder Patq
 
 
 {-| Try to convert a @q encoded string into a BigInt, failing on improperly
 formatted strings.
 
+    import Urbit.Encoding.Atom as Atom
     import BigInt
 
     fromPatq "~sampel"
-        |> Result.map (BigInt.toString)
+        |> Result.map (Atom.toBigInt >> BigInt.toString)
     --> Ok "1135"
 
 -}
-fromPatq : String -> Result (List DeadEnd) BigInt
+fromPatq : String -> Result (List DeadEnd) Atom
 fromPatq patq =
-    P.run patqRadixParser patq
-        |> Result.map radixToBigInt
+    P.run patqParser patq
+
+
+{-| Parser for @q encoded strings.
+-}
+patqParser : Parser Atom
+patqParser =
+    headParser
+        |> P.andThen (dashPairsParser Nothing)
+        |> P.andThen (radixToBigInt >> bigIntToAtomParser)
 
 
 
@@ -109,7 +158,7 @@ type Kind
     | Patq
 
 
-encoder : Kind -> BigInt -> Maybe String
+encoder : Kind -> BigInt -> String
 encoder kind point =
     let
         toString : List Int -> String
@@ -156,14 +205,9 @@ encoder kind point =
                 |> Tuple.second
                 |> (++) "~"
     in
-    if BigInt.gte point zero then
-        point
-            |> bigIntToRadix
-            |> toString
-            |> Just
-
-    else
-        Nothing
+    point
+        |> bigIntToRadix
+        |> toString
 
 
 
@@ -222,50 +266,14 @@ radixToBigInt =
 -- PARSERS
 
 
-patqRadixParser : Parser (List Int)
-patqRadixParser =
-    headParser
-        |> P.andThen (dashPairsParser Nothing)
+bigIntToAtomParser : BigInt -> Parser Atom
+bigIntToAtomParser bigInt =
+    case Atom.fromBigInt bigInt of
+        Just atom ->
+            P.succeed atom
 
-
-patpRadixParser : Parser (List Int)
-patpRadixParser =
-    let
-        parseExactlyFourPairs : List Int -> Parser (P.Step state (List Int))
-        parseExactlyFourPairs digits =
-            P.succeed
-                (\( pre1, suf1 ) ( pre2, suf2 ) ( pre3, suf3 ) ( pre4, suf4 ) ->
-                    P.Done
-                        (suf4
-                            :: pre4
-                            :: suf3
-                            :: pre3
-                            :: suf2
-                            :: pre2
-                            :: suf1
-                            :: pre1
-                            :: digits
-                        )
-                )
-                |. P.symbol "-"
-                |= dashPairParser
-                |= dashPairParser
-                |= dashPairParser
-                |= dashPairParser
-    in
-    headParser
-        |> P.andThen (dashPairsParser (Just 4))
-        |> P.andThen
-            (\head ->
-                P.loop head
-                    (\digits ->
-                        P.oneOf
-                            [ parseExactlyFourPairs digits
-                            , P.succeed (\() -> P.Done digits)
-                                |= P.end
-                            ]
-                    )
-            )
+        Nothing ->
+            P.problem "Invalid (negative) number"
 
 
 {-| Parses a sequence of `dash -> prefix -> suffix`.
@@ -638,11 +646,6 @@ fen r a b f m =
 
 
 -- CONSTANTS
-
-
-zero : BigInt
-zero =
-    BigInt.fromInt 0
 
 
 u_256 : BigInt
