@@ -16,8 +16,8 @@ import Urbit
 connect : Int -> Time.Posix -> Cmd Msg
 connect entropy time =
     Urbit.connect
-        { ship = "zod"
-        , url = "http://0.0.0.0:8080"
+        { ship = zod
+        , url = "http://localhost:8080"
         , channelId =
             Random.initialSeed entropy
                 |> Random.step (Urbit.channelId time)
@@ -29,13 +29,12 @@ connect entropy time =
 poke : Urbit.Session -> ( Urbit.Session, Cmd Msg )
 poke session =
     Urbit.poke
-        { ship = "zod"
+        { ship = zod
         , app = "hood"
         , mark = "helm-hi"
         , json = Json.Encode.string "opening airlock"
-        , session = session
         }
-        PokedHood
+        |> Urbit.send session PokedHood
 ```
 
 See the `example/` folder for a more complete example.
