@@ -35,7 +35,8 @@ import Word.Hex
 -- @p
 
 
-{-| Try to convert a BigInt to a @p encoded string, failing on negative numbers.
+{-| Try to convert an Atom into a @p encoded string, failing on negative
+numbers.
 
     import Urbit.Encoding.Atom as Atom
 
@@ -48,7 +49,7 @@ toPatp =
     Atom.toBigInt >> scramble >> encoder Patp
 
 
-{-| Try to convert a @p encoded string into a BigInt, failing on improperly
+{-| Try to convert a @p encoded string into an Atom, failing on improperly
 formatted strings.
 
     import Urbit.Encoding.Atom as Atom
@@ -111,7 +112,8 @@ patpParser =
 -- @q
 
 
-{-| Try to convert a BigInt to a @q encoded string, failing on negative numbers.
+{-| Try to convert an Atom into a @q encoded string, failing on negative
+numbers.
 
     import Urbit.Encoding.Atom as Atom
 
@@ -124,7 +126,7 @@ toPatq =
     Atom.toBigInt >> encoder Patq
 
 
-{-| Try to convert a @q encoded string into a BigInt, failing on improperly
+{-| Try to convert a @q encoded string into an Atom, failing on improperly
 formatted strings.
 
     import Urbit.Encoding.Atom as Atom
