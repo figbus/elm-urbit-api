@@ -12,6 +12,10 @@ import Urbit.Encoding.Shared exposing (zero)
 
 {-| The most basic Urbit data type. Represents any non-negative integer of any
 size.
+
+See [Urbit.Encoding.Phonemic](Urbit-Encoding-Phonemic) for converting
+to/from planet names (i.e. ~sampel-palnet).
+
 -}
 type Atom
     = Atom BigInt
