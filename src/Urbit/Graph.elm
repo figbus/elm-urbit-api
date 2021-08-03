@@ -75,7 +75,7 @@ emptyStore =
 -}
 getFromStore : Resource -> Store -> Maybe Graph
 getFromStore resource (Store store) =
-    Dict.get (resourceToKey resource) store
+    Dict.get (resourceToPath resource) store
 
 
 {-| Parses a resource string into a `Resource` type.
@@ -396,7 +396,7 @@ updateStore graphUpdate (Store store) =
     Store <|
         case graphUpdate of
             AddGraph resource newGraph ->
-                Dict.insert (resourceToKey resource) newGraph store
+                Dict.insert (resourceToPath resource) newGraph store
 
             AddNodes resource newNodes ->
                 let
@@ -419,7 +419,7 @@ updateStore graphUpdate (Store store) =
                                     )
                                     graph
                 in
-                Dict.update (resourceToKey resource)
+                Dict.update (resourceToPath resource)
                     (Maybe.withDefault Dict.empty
                         >> (\graph -> List.foldl insertNode graph newNodes)
                         >> Just
@@ -427,7 +427,7 @@ updateStore graphUpdate (Store store) =
                     store
 
             RemovePosts resource indices ->
-                Dict.update (resourceToKey resource)
+                Dict.update (resourceToPath resource)
                     (Maybe.map
                         (\graph ->
                             List.foldl
@@ -446,7 +446,7 @@ updateStore graphUpdate (Store store) =
                     store
 
             RemoveGraph resource ->
-                Dict.remove (resourceToKey resource) store
+                Dict.remove (resourceToPath resource) store
 
 
 
@@ -644,6 +644,6 @@ parseIndex =
         >> Maybe.withDefault []
 
 
-resourceToKey : Resource -> String
-resourceToKey { ship, name } =
+resourceToPath : Resource -> String
+resourceToPath { ship, name } =
     Phonemic.toPatp ship ++ "/" ++ name
