@@ -266,6 +266,7 @@ addNodesSpider { url, resource, nodes } =
         , outputMark = "graph-view-action"
         , threadName = "graph-add-nodes"
         , body = encodeAddNodesGraphUpdate resource nodes
+        , decoder = JD.value
         }
 
 
@@ -280,7 +281,7 @@ createManagedGraph :
     , graphModule : String
     , mark : String
     }
-    -> (Result Http.Error JD.Value -> msg)
+    -> (Result Http.Error () -> msg)
     -> Cmd msg
 createManagedGraph config =
     Urbit.spider
@@ -298,6 +299,7 @@ createManagedGraph config =
                 , graphModule = config.graphModule
                 , mark = config.mark
                 }
+        , decoder = JD.null ()
         }
 
 
@@ -312,7 +314,7 @@ createUnmanagedGraph :
     , graphModule : String
     , mark : String
     }
-    -> (Result Http.Error JD.Value -> msg)
+    -> (Result Http.Error () -> msg)
     -> Cmd msg
 createUnmanagedGraph config =
     Urbit.spider
@@ -346,6 +348,7 @@ createUnmanagedGraph config =
                 , graphModule = config.graphModule
                 , mark = config.mark
                 }
+        , decoder = JD.null ()
         }
 
 
@@ -355,7 +358,7 @@ deleteGraphSpider :
     { url : String
     , resource : Resource
     }
-    -> (Result Http.Error JD.Value -> msg)
+    -> (Result Http.Error () -> msg)
     -> Cmd msg
 deleteGraphSpider { url, resource } =
     Urbit.spider
@@ -369,6 +372,7 @@ deleteGraphSpider { url, resource } =
                   , JE.object [ ( "resource", encodeResource resource ) ]
                   )
                 ]
+        , decoder = JD.null ()
         }
 
 

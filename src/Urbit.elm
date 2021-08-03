@@ -555,8 +555,9 @@ spider :
     , outputMark : String
     , threadName : String
     , body : JE.Value
+    , decoder : JD.Decoder output
     }
-    -> (Result Http.Error JD.Value -> msg)
+    -> (Result Http.Error output -> msg)
     -> Cmd msg
 spider config tagger =
     Http.riskyRequest
@@ -572,7 +573,7 @@ spider config tagger =
                 ++ config.outputMark
                 ++ ".json"
         , body = Http.jsonBody config.body
-        , expect = Http.expectJson tagger JD.value
+        , expect = Http.expectJson tagger config.decoder
         , timeout = Nothing
         , tracker = Nothing
         }
