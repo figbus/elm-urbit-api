@@ -3,6 +3,7 @@ module Urbit.Encoding.PhonemicTests exposing (..)
 import BigInt
 import Expect
 import Fuzz
+import Random
 import Test exposing (Test, describe, fuzz, test)
 import Urbit.Encoding.Atom as Atom
 import Urbit.Encoding.Phonemic as Phonemic
@@ -94,11 +95,6 @@ patp =
         ]
 
 
-maxSafeInt : Int
-maxSafeInt =
-    2147483647
-
-
 fuzzUInt : Fuzz.Fuzzer Int
 fuzzUInt =
-    Fuzz.intRange 0 maxSafeInt
+    Fuzz.intRange 0 Random.maxInt
