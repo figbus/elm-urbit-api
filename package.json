@@ -1,8 +1,10 @@
 {
   "scripts": {
-    "test": "elm-verify-examples && elm-test"
+    "test": "elm-verify-examples && elm-test",
+    "docs": "elm-doc-preview"
   },
   "devDependencies": {
+    "elm-doc-preview": "^5.0.5",
     "elm-test": "^0.19.1-revision7",
     "elm-verify-examples": "^5.0.0"
   }
