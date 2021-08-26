@@ -1,4 +1,4 @@
 {
   "root": "../src",
-  "tests": [ "Urbit.Encoding.Phonemic" ]
+  "tests": ["Urbit.Encoding.Phonemic", "Urbit.Encoding.DateAbsolute"]
 }
