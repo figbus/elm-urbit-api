@@ -6,6 +6,7 @@ module Urbit.Graph exposing
     , getGraph, subscribeToGraphUpdates, addNodes, addNodesSpider
     , createManagedGraph, createUnmanagedGraph, deleteGraphSpider
     , Update, updateDecoder, updateStore
+    , encodeResource, resourceToPath
     )
 
 {-|
@@ -32,6 +33,11 @@ module Urbit.Graph exposing
 # Updates
 
 @docs Update, updateDecoder, updateStore
+
+
+# Utils
+
+@docs encodeResource, resourceToPath
 
 -}
 
@@ -551,6 +557,34 @@ shipDecoder =
 -- JSON ENCODERS
 
 
+{-| Encode a [Resource](#Resource) into a JSON value of the form:
+
+```json
+{
+  "ship": "~zod",
+  "name": "example"
+}
+```
+
+-}
+encodeResource : Resource -> JE.Value
+encodeResource resource =
+    JE.object
+        [ ( "ship", JE.string (Phonemic.toPatp resource.ship) )
+        , ( "name", JE.string resource.name )
+        ]
+
+
+{-| Encode a [Resource](#Resource) into a path string of the form:
+
+    "~zod/example"
+
+-}
+resourceToPath : Resource -> String
+resourceToPath { ship, name } =
+    Phonemic.toPatp ship ++ "/" ++ name
+
+
 encodeAddNodesGraphUpdate : Resource -> List Node -> JE.Value
 encodeAddNodesGraphUpdate resource nodes =
     JE.object
@@ -584,14 +618,6 @@ encodeGraphCreate config =
                 , ( "mark", JE.string config.mark )
                 ]
           )
-        ]
-
-
-encodeResource : Resource -> JE.Value
-encodeResource resource =
-    JE.object
-        [ ( "ship", JE.string (Phonemic.toPatp resource.ship) )
-        , ( "name", JE.string resource.name )
         ]
 
 
@@ -642,8 +668,3 @@ parseIndex =
     String.split "/"
         >> List.tail
         >> Maybe.withDefault []
-
-
-resourceToPath : Resource -> String
-resourceToPath { ship, name } =
-    Phonemic.toPatp ship ++ "/" ++ name
