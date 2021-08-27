@@ -1,12 +1,12 @@
 module Urbit.Graph exposing
-    ( Store, Resource, emptyStore, getFromStore
-    , parseResource
+    ( Store, emptyStore, getFromStore
+    , Resource
+    , parseResource, encodeResource, resourceToString, resourceToPath
     , Graph, Node, getNodeChildren, getNodePost, Post, Index, newNode
     , textContent, urlContent, mentionContent, codeContent
     , getGraph, subscribeToGraphUpdates, addNodes, addNodesSpider
     , createManagedGraph, createUnmanagedGraph, deleteGraphSpider
     , Update, updateDecoder, updateStore
-    , encodeResource, resourceToString, resourceToPath
     )
 
 {-|
@@ -14,8 +14,13 @@ module Urbit.Graph exposing
 
 # Store
 
-@docs Store, Resource, emptyStore, getFromStore
-@docs parseResource
+@docs Store, emptyStore, getFromStore
+
+
+# Resource
+
+@docs Resource
+@docs parseResource, encodeResource, resourceToString, resourceToPath
 
 
 # Graph
@@ -33,11 +38,6 @@ module Urbit.Graph exposing
 # Updates
 
 @docs Update, updateDecoder, updateStore
-
-
-# Utils
-
-@docs encodeResource, resourceToString, resourceToPath
 
 -}
 
@@ -62,14 +62,6 @@ type Store
     = Store (Dict String Graph)
 
 
-{-| A pair of a ship and a name uniquely identifying a graph.
--}
-type alias Resource =
-    { ship : Atom
-    , name : String
-    }
-
-
 {-| Create an empty [Store](#Store).
 -}
 emptyStore : Store
@@ -82,6 +74,18 @@ emptyStore =
 getFromStore : Resource -> Store -> Maybe Graph
 getFromStore resource (Store store) =
     Dict.get (resourceToString resource) store
+
+
+
+-- RESOURCE
+
+
+{-| A pair of a ship and a name uniquely identifying a graph.
+-}
+type alias Resource =
+    { ship : Atom
+    , name : String
+    }
 
 
 {-| Parses a resource string into a `Resource` type.
@@ -109,6 +113,44 @@ parseResource resource =
                 |= P.getChompedString (P.chompWhile (\_ -> True))
     in
     P.run parser resource
+
+
+{-| Encode a [Resource](#Resource) into a JSON value of the form:
+
+```json
+{
+  "ship": "~zod",
+  "name": "example"
+}
+```
+
+-}
+encodeResource : Resource -> JE.Value
+encodeResource resource =
+    JE.object
+        [ ( "ship", JE.string (Phonemic.toPatp resource.ship) )
+        , ( "name", JE.string resource.name )
+        ]
+
+
+{-| Encode a [Resource](#Resource) into a string of the form:
+
+    "~zod/example"
+
+-}
+resourceToString : Resource -> String
+resourceToString { ship, name } =
+    Phonemic.toPatp ship ++ "/" ++ name
+
+
+{-| Encode a [Resource](#Resource) into a path string of the form:
+
+    "/ship/~zod/example"
+
+-}
+resourceToPath : Resource -> String
+resourceToPath resource =
+    "/ship/" ++ resourceToString resource
 
 
 
@@ -555,44 +597,6 @@ shipDecoder =
 
 
 -- JSON ENCODERS
-
-
-{-| Encode a [Resource](#Resource) into a JSON value of the form:
-
-```json
-{
-  "ship": "~zod",
-  "name": "example"
-}
-```
-
--}
-encodeResource : Resource -> JE.Value
-encodeResource resource =
-    JE.object
-        [ ( "ship", JE.string (Phonemic.toPatp resource.ship) )
-        , ( "name", JE.string resource.name )
-        ]
-
-
-{-| Encode a [Resource](#Resource) into a string of the form:
-
-    "~zod/example"
-
--}
-resourceToString : Resource -> String
-resourceToString { ship, name } =
-    Phonemic.toPatp ship ++ "/" ++ name
-
-
-{-| Encode a [Resource](#Resource) into a path string of the form:
-
-    "/ship/~zod/example"
-
--}
-resourceToPath : Resource -> String
-resourceToPath resource =
-    "/ship/" ++ resourceToString resource
 
 
 encodeAddNodesGraphUpdate : Resource -> List Node -> JE.Value
