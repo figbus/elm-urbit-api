@@ -6,7 +6,7 @@ module Urbit.Graph exposing
     , getGraph, subscribeToGraphUpdates, addNodes, addNodesSpider
     , createManagedGraph, createUnmanagedGraph, deleteGraphSpider
     , Update, updateDecoder, updateStore
-    , encodeResource, resourceToPath
+    , encodeResource, resourceToString, resourceToPath
     )
 
 {-|
@@ -37,7 +37,7 @@ module Urbit.Graph exposing
 
 # Utils
 
-@docs encodeResource, resourceToPath
+@docs encodeResource, resourceToString, resourceToPath
 
 -}
 
@@ -81,7 +81,7 @@ emptyStore =
 -}
 getFromStore : Resource -> Store -> Maybe Graph
 getFromStore resource (Store store) =
-    Dict.get (resourceToPath resource) store
+    Dict.get (resourceToString resource) store
 
 
 {-| Parses a resource string into a `Resource` type.
@@ -402,7 +402,7 @@ updateStore graphUpdate (Store store) =
     Store <|
         case graphUpdate of
             AddGraph resource newGraph ->
-                Dict.insert (resourceToPath resource) newGraph store
+                Dict.insert (resourceToString resource) newGraph store
 
             AddNodes resource newNodes ->
                 let
@@ -425,7 +425,7 @@ updateStore graphUpdate (Store store) =
                                     )
                                     graph
                 in
-                Dict.update (resourceToPath resource)
+                Dict.update (resourceToString resource)
                     (Maybe.withDefault Dict.empty
                         >> (\graph -> List.foldl insertNode graph newNodes)
                         >> Just
@@ -433,7 +433,7 @@ updateStore graphUpdate (Store store) =
                     store
 
             RemovePosts resource indices ->
-                Dict.update (resourceToPath resource)
+                Dict.update (resourceToString resource)
                     (Maybe.map
                         (\graph ->
                             List.foldl
@@ -452,7 +452,7 @@ updateStore graphUpdate (Store store) =
                     store
 
             RemoveGraph resource ->
-                Dict.remove (resourceToPath resource) store
+                Dict.remove (resourceToString resource) store
 
 
 
@@ -575,14 +575,24 @@ encodeResource resource =
         ]
 
 
-{-| Encode a [Resource](#Resource) into a path string of the form:
+{-| Encode a [Resource](#Resource) into a string of the form:
 
     "~zod/example"
 
 -}
-resourceToPath : Resource -> String
-resourceToPath { ship, name } =
+resourceToString : Resource -> String
+resourceToString { ship, name } =
     Phonemic.toPatp ship ++ "/" ++ name
+
+
+{-| Encode a [Resource](#Resource) into a path string of the form:
+
+    "/ship/~zod/example"
+
+-}
+resourceToPath : Resource -> String
+resourceToPath resource =
+    "/ship/" ++ resourceToString resource
 
 
 encodeAddNodesGraphUpdate : Resource -> List Node -> JE.Value
