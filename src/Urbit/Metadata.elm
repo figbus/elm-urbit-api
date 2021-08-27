@@ -1,13 +1,12 @@
 module Urbit.Metadata exposing
-    ( add, remove
-    , Config(..), Vip(..)
+    ( MetadataResource, Config(..), Vip(..)
+    , add, remove
     )
 
 {-|
 
+@docs MetadataResource, Config, Vip
 @docs add, remove
-
-@docs Config, Vip
 
 -}
 
@@ -20,10 +19,18 @@ import Urbit.Encoding.Phonemic as Phonemic
 import Urbit.Graph as Graph
 
 
+{-| A metadata resource
+-}
+type alias MetadataResource =
+    { appName : String
+    , resource : Graph.Resource
+    }
+
+
 {-| Metadata config
 -}
 type Config
-    = Group { feed : Maybe { appName : String, resource : Graph.Resource } }
+    = Group { feed : Maybe MetadataResource }
     | Graph { module_ : String }
 
 
@@ -58,7 +65,7 @@ encodeConfig config =
   - `MemberMetadata`: Allow members to add channels (groups)
   - `HostFeed`: Only host can post to group feed
   - `AdminFeed`: Only admins and host can post to group feed
-  - `None`: No variation
+  - `NoVariation`: No variation
 
 -}
 type Vip
@@ -90,8 +97,6 @@ vipToString vip =
 
 {-| Add metadata.
 
-**Notes:**
-
   - `appName` is usually set to `"groups"` for modifying group metadata, and
     `"graph"` for modifying metadata of an individual graph
   - `color` is a hex color code without the "#" (i.e. `"4d0a3b"`)
@@ -100,8 +105,7 @@ vipToString vip =
 add :
     { session : Urbit.Session
     , group : Graph.Resource
-    , appName : String
-    , resource : Graph.Resource
+    , resource : MetadataResource
     , metadata :
         { title : String
         , description : String
@@ -116,7 +120,7 @@ add :
         }
     }
     -> Urbit.OutMsg
-add { session, group, appName, resource, metadata } =
+add { session, group, resource, metadata } =
     let
         meta =
             metadata
@@ -125,8 +129,8 @@ add { session, group, appName, resource, metadata } =
         { session = session
         , action = "add"
         , group = group
-        , appName = appName
-        , resource = resource
+        , appName = resource.appName
+        , resource = resource.resource
         , args =
             [ ( "metadata"
               , JE.object
@@ -153,17 +157,16 @@ add { session, group, appName, resource, metadata } =
 remove :
     { session : Urbit.Session
     , group : Graph.Resource
-    , appName : String
-    , resource : Graph.Resource
+    , resource : MetadataResource
     }
     -> Urbit.OutMsg
-remove { session, group, appName, resource } =
+remove { session, group, resource } =
     sendMetadataPoke
         { session = session
         , action = "remove"
         , group = group
-        , appName = appName
-        , resource = resource
+        , appName = resource.appName
+        , resource = resource.resource
         , args = []
         }
 
