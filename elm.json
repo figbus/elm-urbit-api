@@ -8,6 +8,7 @@
         "Urbit",
         "Urbit.Graph",
         "Urbit.Group",
+        "Urbit.Metadata",
         "Urbit.Encoding.Atom",
         "Urbit.Encoding.DateAbsolute",
         "Urbit.Encoding.Phonemic"
