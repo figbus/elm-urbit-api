@@ -6,6 +6,6 @@
   "devDependencies": {
     "elm-doc-preview": "^5.0.5",
     "elm-test": "^0.19.1-revision7",
-    "elm-verify-examples": "^5.0.0"
+    "elm-verify-examples": "^5.2.0"
   }
 }
