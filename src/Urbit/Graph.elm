@@ -293,7 +293,7 @@ addNodes { resource, nodes, session } =
     Urbit.poke
         { ship = Urbit.ship session
         , app = "graph-push-hook"
-        , mark = "graph-update-2"
+        , mark = "graph-update-3"
         , json = encodeAddNodesGraphUpdate resource nodes
         }
 
@@ -310,7 +310,8 @@ addNodesSpider :
 addNodesSpider { url, resource, nodes } =
     Urbit.spider
         { url = url
-        , inputMark = "graph-update-2"
+        , desk = landscapeDesk
+        , inputMark = "graph-update-3"
         , outputMark = "graph-view-action"
         , threadName = "graph-add-nodes"
         , body = encodeAddNodesGraphUpdate resource nodes
@@ -334,6 +335,7 @@ createManagedGraph :
 createManagedGraph config =
     Urbit.spider
         { url = config.url
+        , desk = landscapeDesk
         , inputMark = "graph-view-action"
         , outputMark = "json"
         , threadName = "graph-create"
@@ -367,6 +369,7 @@ createUnmanagedGraph :
 createUnmanagedGraph config =
     Urbit.spider
         { url = config.url
+        , desk = landscapeDesk
         , inputMark = "graph-view-action"
         , outputMark = "json"
         , threadName = "graph-create"
@@ -411,6 +414,7 @@ deleteGraphSpider :
 deleteGraphSpider { url, resource } =
     Urbit.spider
         { url = url
+        , desk = landscapeDesk
         , inputMark = "graph-view-action"
         , outputMark = "json"
         , threadName = "graph-delete"
@@ -675,6 +679,11 @@ encodeIndex index =
 
 
 -- INTERNAL HELPERS
+
+
+landscapeDesk : String
+landscapeDesk =
+    "landscape"
 
 
 parseIndex : String -> List String

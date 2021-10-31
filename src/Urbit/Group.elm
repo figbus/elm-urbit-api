@@ -194,6 +194,7 @@ sendGroupSpider :
 sendGroupSpider { url, groupThread, action, args } =
     Urbit.spider
         { url = url
+        , desk = "landscape"
         , inputMark = "group-view-action"
         , outputMark = "json"
         , threadName = "group-" ++ groupThread

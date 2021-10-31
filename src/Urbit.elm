@@ -551,6 +551,7 @@ scry config tagger =
 -}
 spider :
     { url : String
+    , desk : String
     , inputMark : String
     , outputMark : String
     , threadName : String
@@ -566,11 +567,12 @@ spider config tagger =
         , url =
             config.url
                 ++ "/spider/"
-                ++ config.inputMark
-                ++ "/"
-                ++ config.threadName
-                ++ "/"
-                ++ config.outputMark
+                ++ String.join "/"
+                    [ config.desk
+                    , config.inputMark
+                    , config.threadName
+                    , config.outputMark
+                    ]
                 ++ ".json"
         , body = Http.jsonBody config.body
         , expect = Http.expectJson tagger config.decoder
