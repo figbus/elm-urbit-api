@@ -3,7 +3,7 @@
     "name": "figbus/elm-urbit-api",
     "summary": "Communicate with Urbit from Elm.",
     "license": "MIT",
-    "version": "4.0.0",
+    "version": "4.0.1",
     "exposed-modules": [
         "Urbit",
         "Urbit.Graph",
