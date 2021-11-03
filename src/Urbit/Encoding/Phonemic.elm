@@ -731,17 +731,28 @@ bigIntMap2Bytes f a b =
             else
                 "0" ++ str
 
-        toRevByteList bigInt =
+        toByteList bigInt =
             bigInt
                 |> BigInt.toHexString
                 |> toEvenLengthHexString
                 |> Word.Hex.toByteList
-                |> List.reverse
+
+        aByteList =
+            toByteList a
+
+        bByteList =
+            toByteList b
+
+        padList len c =
+            let
+                diff =
+                    len - List.length c
+            in
+            List.repeat diff 0 ++ c
     in
     List.map2 f
-        (toRevByteList a)
-        (toRevByteList b)
-        |> List.reverse
+        (aByteList |> padList (List.length bByteList))
+        (bByteList |> padList (List.length aByteList))
         |> Word.Hex.fromByteList
         |> BigInt.fromHexString
         |> Maybe.withDefault zero

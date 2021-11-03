@@ -45,13 +45,18 @@ patq =
                     |> Maybe.map Phonemic.toPatq
                     |> Expect.equal
                         (Just "~sampel-palnet-sampel-palnet-sampel-palnet-sampel-palnet")
-        , test "~sampel-palnet-sampel-palnet--sampel-palnet-sampel-palnet"
-            (\() ->
+        , test "~sampel-palnet-sampel-palnet--sampel-palnet-sampel-palnet" <|
+            \() ->
                 "~sampel-palnet-sampel-palnet--sampel-palnet-sampel-palnet"
                     |> Phonemic.fromPatq
                     |> Result.map (Atom.toBigInt >> BigInt.toString)
                     |> Expect.err
-            )
+        , test "~dalmev-minhet-dozzod-dozzod" <|
+            \() ->
+                "~dalmev-minhet-dozzod-dozzod"
+                    |> Phonemic.fromPatq
+                    |> Result.map (Atom.toBigInt >> BigInt.toString)
+                    |> Expect.equal (Ok "2680573279382536192")
         ]
 
 
@@ -92,6 +97,12 @@ patp =
                     |> Phonemic.fromPatp
                     |> Result.map (Atom.toBigInt >> BigInt.toString)
                     |> Expect.err
+        , test "~dalmev-minhet-dozzod-dozzod" <|
+            \() ->
+                "~dalmev-minhet-dozzod-dozzod"
+                    |> Phonemic.fromPatp
+                    |> Result.map (Atom.toBigInt >> BigInt.toString)
+                    |> Expect.equal (Ok "2680573279382536192")
         ]
 
 
